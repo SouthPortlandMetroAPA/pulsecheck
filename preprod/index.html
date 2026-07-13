@@ -154,7 +154,9 @@ const SB_URL  = 'https://dqzbekoaysgaiqljueac.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxemJla29heXNnYWlxbGp1ZWFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzA5NzgsImV4cCI6MjA5MDc0Njk3OH0.cCdGxZ4zEFzU_r6lWSDeoNWG67Q4MSYCAtpds035dfU';   /* public anon key — injected by pulsecheck-build.mjs */
 const IS_PREPROD = /\/preprod\//.test(location.pathname);
 const APP_ROW = IS_PREPROD ? 'PulseCheck-preprod' : 'PulseCheck';
-const POLL_SLUG = new URLSearchParams(location.search).get('p') || 'sunday-masters-fall26';
+/* ?p=<slug> pins a poll; without it the page auto-picks the ONLY open
+   poll, or lists them when several are open (0.2 generic draft). */
+let POLL_SLUG = new URLSearchParams(location.search).get('p') || null;
 document.getElementById('verSpan').textContent = 'v' + (window.APP_VERSION || '?') + (IS_PREPROD ? ' (preprod)' : '');
 if (IS_PREPROD) document.getElementById('envPill').style.display = '';
 
@@ -223,8 +225,33 @@ async function lookup() {
 let _poll = null;
 let _choice = null;
 
+/* No pinned slug → auto-pick the only open poll; list when several. */
+async function resolveSlug() {
+  if (POLL_SLUG) return true;
+  const card = document.getElementById('pollCard');
+  let open = [];
+  try { open = await rpc('pulsecheck_open_polls', {}) || []; } catch (e) {}
+  if (open.length === 1) { POLL_SLUG = open[0].slug; return true; }
+  card.style.display = '';
+  document.getElementById('pollSave').style.display = 'none';
+  if (!open.length) {
+    document.getElementById('pollTitle').textContent = 'No open question right now';
+    document.getElementById('pollBody').innerHTML = '<span class="hint">Check back soon — Michelle & Paul will send a link when there\'s something to weigh in on.</span>';
+    return false;
+  }
+  document.getElementById('pollTitle').textContent = 'Which question?';
+  document.getElementById('pollBody').innerHTML = '';
+  document.getElementById('pollOpts').innerHTML = open.map(p =>
+    '<label class="opt" data-goslug="' + esc(p.slug) + '"><span><span class="olabel">' + esc(p.title) + '</span></span></label>').join('');
+  document.querySelectorAll('[data-goslug]').forEach(l => l.onclick = () => {
+    location.search = '?p=' + encodeURIComponent(l.dataset.goslug);
+  });
+  return false;
+}
+
 async function loadPoll() {
   if (!me) return;
+  if (!await resolveSlug()) return;
   const card = document.getElementById('pollCard');
   try {
     _poll = await rpc('pulsecheck_poll', { p_slug: POLL_SLUG, p_apa: me.apa });

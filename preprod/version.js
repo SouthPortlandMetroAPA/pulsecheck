@@ -4,4 +4,4 @@
    Pages serves it. Root version.js is prod's and stays frozen until
    pulsecheck-build.mjs --promote copies this file over it.
    ════════════════════════════════════════════════════════════════════════ */
-window.APP_VERSION = '0.1';
+window.APP_VERSION = '0.2';
