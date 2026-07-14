@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PulseCheck — South Portland Metro APA</title>
+<!-- ════════════════════════════════════════════════════════════════════
+     PulseCheck v0.1 — quick league questions (one poll at a time).
+     Brief: tools/claude/briefs/2026-07-13-pulsecheck.md.
+
+     BESPOKE NOW, GENERIC LATER: the page renders whatever poll row
+     slate.polls holds for ?p=<slug> (default sunday-masters-fall26) —
+     title, body, options, extras checkbox + comment all come from the
+     DB, so a future poll is an INSERT, not a deploy.
+
+     TRUST MODEL (ReRack precedent): identity = APA# or email via
+     papertrail_lookup_player, no auth; one response per (poll, member),
+     UPSERT = change your answer; who/when recorded; eligibility is
+     enforced server-side in slate.pulsecheck_vote (SECURITY DEFINER).
+
+     BRANDING: house player-facing look (PatchCheck canon — same shell
+     as ReRack). Canonical #updateOverlay. Per-env version files.
+     DEPLOY: GitHub Pages (SouthPortlandMetroAPA/pulsecheck), preprod
+     under /preprod/ polling the PulseCheck-preprod apa_core row.
+     index.src.html is the source; tools/claude/pulsecheck-build.mjs
+     injects the public anon key → preprod/index.html (--promote for
+     root). Edit the SRC, not the output.
+     ════════════════════════════════════════════════════════════════════ -->
+<script src="version.js"></script>
+<style>
+  :root {
+    --spm-primary: #ea002a;
+    --spm-accent: #0031a1;
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --border: #e1e1e1;
+    --text: #1f1f1f;
+    --muted: #888;
+    --ok: #16a34a;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px; }
+  .page { width: 100%; max-width: 600px; margin: 0 auto; padding: 12px; }
+  header {
+    width: 100%; border-radius: 12px; padding: 18px 16px 16px; color: #fff;
+    background: linear-gradient(135deg, var(--spm-primary), var(--spm-accent));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22); text-align: center; margin-bottom: 14px;
+  }
+  .title { font-size: 1.5rem; font-weight: 900; line-height: 1.08; }
+  .subtitle { font-size: 1.0rem; font-weight: 400; font-style: italic; opacity: 0.95; margin-top: 6px; }
+  .env-pill { display: inline-block; margin-top: 6px; padding: 3px 14px; border-radius: 999px;
+    font-size: 0.65rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    background: rgba(255,255,255,0.2); color: #fff; border: 1.5px solid rgba(255,255,255,0.5); }
+  .header-status { margin: 8px 0 0; font-size: 0.85rem; opacity: 0.9; }
+  .header-status a { color: #fff; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1); margin-bottom: 14px; }
+  .card h2 { margin: 0 0 6px; font-size: 1.05rem; color: var(--spm-accent); }
+  .hint { color: var(--muted); font-size: 0.82rem; line-height: 1.45; }
+  .poll-body { font-size: 0.9rem; line-height: 1.5; margin: 8px 0 12px; }
+  input, textarea { width: 100%; padding: 11px 14px; border: 1px solid var(--border);
+    border-radius: 999px; font: inherit; margin-top: 8px; background: var(--bg);
+    color: var(--text); outline: none; }
+  textarea { border-radius: 12px; min-height: 64px; resize: vertical; }
+  input:focus, textarea:focus {
+    border-color: var(--spm-accent); box-shadow: 0 0 0 3px rgba(0, 49, 161, 0.15); }
+  button { font: inherit; cursor: pointer; }
+  .btn-primary { display: block; width: 100%; margin-top: 12px; padding: 12px 14px;
+    border: none; border-radius: 999px; color: #fff; font-weight: 900; font-size: 1rem;
+    letter-spacing: 0.05em; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(135deg, var(--spm-primary), var(--spm-accent)); }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  .opt { display: flex; gap: 10px; align-items: flex-start; border: 2px solid var(--border);
+    border-radius: 12px; padding: 12px; margin-top: 8px; cursor: pointer; background: #fff; }
+  .opt input[type=radio] { width: auto; margin-top: 3px; accent-color: var(--spm-accent); }
+  .opt.active { border-color: var(--spm-accent); background: #e8f0fe; }
+  .opt .olabel { font-weight: 800; font-size: 0.95rem; }
+  .opt .oblurb { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+  .xtra { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px;
+    padding: 10px; border-radius: 8px; background: #e8f0fe; border: 1px solid #afc6f0;
+    font-size: 0.86rem; line-height: 1.4; cursor: pointer; }
+  .xtra input { width: auto; margin-top: 2px; accent-color: var(--spm-accent); }
+  .youanswered { margin-top: 10px; padding: 8px 12px; border-radius: 999px; text-align: center;
+    background: #e8f0fe; color: var(--spm-accent); border: 1px solid #afc6f0;
+    font-size: 0.82rem; font-weight: 700; }
+  .status { margin-top: 8px; font-size: 0.85rem; text-align: center; }
+  .status.err { color: var(--bad); }
+  .status.ok { color: var(--ok); }
+  .footer-note { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 14px 0 30px; }
+  /* ── CANONICAL "Updating…" overlay (per MEMORY.md consistency rule) ── */
+  .update-overlay { position: fixed; inset: 0; background: rgba(10, 20, 40, 0.72);
+    display: none; align-items: center; justify-content: center; z-index: 9999; padding: 24px; }
+  .update-overlay.shown { display: flex; }
+  .update-box { background: #fff; border-radius: 12px; padding: 36px 32px; max-width: 420px;
+    width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+  .update-spinner { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 50%;
+    border: 5px solid rgba(0,49,161,0.15); border-top-color: var(--spm-accent);
+    animation: update-spin 0.85s linear infinite; }
+  @keyframes update-spin { to { transform: rotate(360deg); } }
+  .update-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 6px;
+    color: var(--spm-accent); letter-spacing: 0.01em; }
+  .update-sub { color: #444; font-size: 0.9rem; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="title">PulseCheck</div>
+    <div class="subtitle" id="pollTitleHead">Quick league question</div>
+    <div class="env-pill" id="envPill" style="display:none">Preprod</div>
+    <div class="header-status" id="whoLine" style="display:none"></div>
+  </header>
+
+  <div class="card" id="identityCard">
+    <h2>Who are you?</h2>
+    <p class="hint">Enter your APA member number or the email on file with the league —
+       your answer is recorded with your name and you can change it any time.</p>
+    <input id="identInput" placeholder="APA # or email" autocomplete="off" inputmode="email">
+    <button class="btn-primary" id="identBtn">Get started</button>
+    <div class="status" id="identStatus"></div>
+  </div>
+
+  <div class="card" id="pollCard" style="display:none">
+    <h2 id="pollTitle"></h2>
+    <div class="poll-body" id="pollBody"></div>
+    <div id="pollOpts"></div>
+    <label class="xtra" id="pollXtraWrap" style="display:none">
+      <input type="checkbox" id="pollXtra"><span id="pollXtraLabel"></span>
+    </label>
+    <textarea id="pollComment" style="display:none"></textarea>
+    <div class="youanswered" id="pollMine" style="display:none"></div>
+    <button class="btn-primary" id="pollSave" disabled>Save my answer</button>
+    <div class="status" id="pollStatus"></div>
+  </div>
+
+  <div class="footer-note">PulseCheck <span id="verSpan"></span> · South Portland Metro APA</div>
+</div>
+
+<div class="update-overlay" id="updateOverlay">
+  <div class="update-box">
+    <div class="update-spinner"></div>
+    <div class="update-title">Updating&hellip;</div>
+    <div class="update-sub">A new version is being deployed. This tab will reload automatically&hellip;</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ── Config ──────────────────────────────────────────────────────── */
+const SB_URL  = 'https://dqzbekoaysgaiqljueac.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxemJla29heXNnYWlxbGp1ZWFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzA5NzgsImV4cCI6MjA5MDc0Njk3OH0.cCdGxZ4zEFzU_r6lWSDeoNWG67Q4MSYCAtpds035dfU';   /* public anon key — injected by pulsecheck-build.mjs */
+const IS_PREPROD = /\/preprod\//.test(location.pathname);
+const APP_ROW = IS_PREPROD ? 'PulseCheck-preprod' : 'PulseCheck';
+/* ?p=<slug> pins a poll; without it the page auto-picks the ONLY open
+   poll, or lists them when several are open (0.2 generic draft). */
+let POLL_SLUG = new URLSearchParams(location.search).get('p') || null;
+document.getElementById('verSpan').textContent = 'v' + (window.APP_VERSION || '?') + (IS_PREPROD ? ' (preprod)' : '');
+if (IS_PREPROD) document.getElementById('envPill').style.display = '';
+
+const esc = s => { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
+
+async function rpc(fn, args) {
+  const r = await fetch(SB_URL + '/rest/v1/rpc/' + fn, {
+    method: 'POST',
+    headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON,
+               'Accept-Profile': 'slate', 'Content-Profile': 'slate',
+               'Content-Type': 'application/json' },
+    body: JSON.stringify(args)
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    let msg = 'Something went wrong';
+    try { msg = JSON.parse(text).message || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+/* ── Identity (house pattern: APA# or email, remembered) ─────────── */
+let me = null;
+try { me = JSON.parse(localStorage.getItem('pulsecheck.identity') || 'null'); } catch (e) {}
+
+function renderWho() {
+  const who = document.getElementById('whoLine');
+  const idCard = document.getElementById('identityCard');
+  if (me) {
+    who.style.display = '';
+    who.innerHTML = esc(me.name) + ' · <a href="#" id="switchLink">Switch player</a>';
+    idCard.style.display = 'none';
+    document.getElementById('switchLink').onclick = (ev) => {
+      ev.preventDefault();
+      me = null;
+      localStorage.removeItem('pulsecheck.identity');
+      document.getElementById('pollCard').style.display = 'none';
+      idCard.style.display = '';
+      who.style.display = 'none';
+    };
+  } else {
+    who.style.display = 'none';
+    idCard.style.display = '';
+  }
+}
+
+async function lookup() {
+  const stat = document.getElementById('identStatus');
+  const input = document.getElementById('identInput').value.trim();
+  if (!input) { stat.textContent = 'Enter your APA number or email.'; stat.className = 'status err'; return; }
+  stat.textContent = 'Looking you up…'; stat.className = 'status';
+  try {
+    const rows = await rpc('papertrail_lookup_player', { input: input });
+    const p = rows && rows[0];
+    if (!p) { stat.textContent = 'No player found for that — check the number/email or text Michelle & Paul.'; stat.className = 'status err'; return; }
+    me = { apa: p.apa_number, name: p.name };
+    localStorage.setItem('pulsecheck.identity', JSON.stringify(me));
+    stat.textContent = ''; stat.className = 'status';
+    renderWho();
+    await loadPoll();
+  } catch (e) { stat.textContent = e.message; stat.className = 'status err'; }
+}
+
+/* ── Poll ────────────────────────────────────────────────────────── */
+let _poll = null;
+let _choice = null;
+
+/* No pinned slug → auto-pick the only open poll; list when several. */
+async function resolveSlug() {
+  if (POLL_SLUG) return true;
+  const card = document.getElementById('pollCard');
+  let open = [];
+  try { open = await rpc('pulsecheck_open_polls', {}) || []; } catch (e) {}
+  if (open.length === 1) { POLL_SLUG = open[0].slug; return true; }
+  card.style.display = '';
+  document.getElementById('pollSave').style.display = 'none';
+  if (!open.length) {
+    document.getElementById('pollTitle').textContent = 'No open question right now';
+    document.getElementById('pollBody').innerHTML = '<span class="hint">Check back soon — Michelle & Paul will send a link when there\'s something to weigh in on.</span>';
+    return false;
+  }
+  document.getElementById('pollTitle').textContent = 'Which question?';
+  document.getElementById('pollBody').innerHTML = '';
+  document.getElementById('pollOpts').innerHTML = open.map(p =>
+    '<label class="opt" data-goslug="' + esc(p.slug) + '"><span><span class="olabel">' + esc(p.title) + '</span></span></label>').join('');
+  document.querySelectorAll('[data-goslug]').forEach(l => l.onclick = () => {
+    location.search = '?p=' + encodeURIComponent(l.dataset.goslug);
+  });
+  return false;
+}
+
+async function loadPoll() {
+  if (!me) return;
+  if (!await resolveSlug()) return;
+  const card = document.getElementById('pollCard');
+  try {
+    _poll = await rpc('pulsecheck_poll', { p_slug: POLL_SLUG, p_apa: me.apa });
+  } catch (e) {
+    card.style.display = '';
+    document.getElementById('pollTitle').textContent = 'No open question right now';
+    document.getElementById('pollBody').innerHTML = '<span class="hint">' + esc(e.message) + '</span>';
+    document.getElementById('pollSave').style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  document.getElementById('pollTitleHead').textContent = _poll.title;
+  document.getElementById('pollTitle').textContent = _poll.title;
+  /* body_html is operator-authored content from slate.polls — trusted */
+  document.getElementById('pollBody').innerHTML = _poll.body_html || '';
+  _choice = _poll.my_choice || null;
+  const opts = document.getElementById('pollOpts');
+  opts.innerHTML = (_poll.options || []).map(o =>
+    '<label class="opt' + (_choice === o.key ? ' active' : '') + '" data-okey="' + esc(o.key) + '">'
+    + '<input type="radio" name="pollopt" value="' + esc(o.key) + '"' + (_choice === o.key ? ' checked' : '') + '>'
+    + '<span><span class="olabel">' + esc(o.label) + '</span>'
+    + (o.blurb ? '<div class="oblurb">' + esc(o.blurb) + '</div>' : '') + '</span>'
+    + '</label>').join('');
+  opts.querySelectorAll('input[name=pollopt]').forEach(r => {
+    r.addEventListener('change', () => {
+      _choice = r.value;
+      opts.querySelectorAll('.opt').forEach(l => l.classList.toggle('active', l.dataset.okey === _choice));
+      document.getElementById('pollSave').disabled = false;
+    });
+  });
+  const x = (_poll.extras || {});
+  const myX = (_poll.my_extras || {});
+  if (x.checkbox) {
+    document.getElementById('pollXtraWrap').style.display = '';
+    document.getElementById('pollXtraLabel').textContent = x.checkbox;
+    document.getElementById('pollXtra').checked = !!myX.tuesday;
+  }
+  const cm = document.getElementById('pollComment');
+  cm.style.display = '';
+  cm.placeholder = x.comment_placeholder || 'Anything else?';
+  cm.value = myX.comment || '';
+  const mine = document.getElementById('pollMine');
+  if (_poll.my_choice) {
+    const lbl = (_poll.options.find(o => o.key === _poll.my_choice) || {}).label || _poll.my_choice;
+    mine.style.display = '';
+    mine.textContent = '✓ You answered: ' + lbl + ' · ' + String(_poll.my_updated_at || '').slice(0, 10) + ' — change it any time';
+  } else {
+    mine.style.display = 'none';
+  }
+  document.getElementById('pollSave').disabled = !_choice;
+}
+
+async function saveVote() {
+  const stat = document.getElementById('pollStatus');
+  if (!me || !_choice) return;
+  stat.textContent = 'Saving…'; stat.className = 'status';
+  try {
+    await rpc('pulsecheck_vote', {
+      p_slug: POLL_SLUG, p_apa: me.apa, p_choice: _choice,
+      p_extras: {
+        tuesday: document.getElementById('pollXtra').checked,
+        comment: document.getElementById('pollComment').value.trim()
+      }
+    });
+    stat.textContent = '✓ Saved — thanks! You can change your answer any time.'; stat.className = 'status ok';
+    await loadPoll();
+  } catch (e) { stat.textContent = e.message; stat.className = 'status err'; }
+}
+
+/* ── Auto-updater (house pattern) ────────────────────────────────── */
+async function checkVersion() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/apps?app_name=eq.' + APP_ROW + '&select=version', {
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Accept-Profile': 'apa_core' }
+    });
+    const rows = await r.json();
+    const remote = rows && rows[0] && rows[0].version;
+    if (remote && window.APP_VERSION && remote !== window.APP_VERSION) {
+      document.getElementById('updateOverlay').classList.add('shown');
+      pollForDeploy(remote);
+    }
+  } catch (e) { /* transient — try again next tick */ }
+}
+async function pollForDeploy(remote) {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch('version.js?cb=' + Date.now(), { cache: 'no-store' });
+      const t = await r.text();
+      if (t.includes("'" + remote + "'")) { location.reload(); return; }
+    } catch (e) {}
+    await new Promise(res => setTimeout(res, 5000));
+  }
+  location.reload();
+}
+setInterval(checkVersion, 5 * 60 * 1000);
+setTimeout(checkVersion, 8000);
+
+/* ── Boot ────────────────────────────────────────────────────────── */
+document.getElementById('identBtn').onclick = lookup;
+document.getElementById('identInput').addEventListener('keydown', ev => { if (ev.key === 'Enter') lookup(); });
+document.getElementById('pollSave').onclick = saveVote;
+renderWho();
+if (me) loadPoll();
+</script>
+</body>
+</html>
