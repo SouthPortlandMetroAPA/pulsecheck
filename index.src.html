@@ -157,6 +157,7 @@ const APP_ROW = IS_PREPROD ? 'PulseCheck-preprod' : 'PulseCheck';
 /* ?p=<slug> pins a poll; without it the page auto-picks the ONLY open
    poll, or lists them when several are open (0.2 generic draft). */
 let POLL_SLUG = new URLSearchParams(location.search).get('p') || null;
+const INVITE_TOKEN = new URLSearchParams(location.search).get('t') || null;
 document.getElementById('verSpan').textContent = 'v' + (window.APP_VERSION || '?') + (IS_PREPROD ? ' (preprod)' : '');
 if (IS_PREPROD) document.getElementById('envPill').style.display = '';
 
@@ -350,11 +351,34 @@ setInterval(checkVersion, 5 * 60 * 1000);
 setTimeout(checkVersion, 8000);
 
 /* ── Boot ────────────────────────────────────────────────────────── */
+/* Invite links carry ?t=<token> (0.3) — auto-identify the recipient so
+   they never type an APA number. The token WINS over a stored identity
+   (a shared phone should vote as the link's owner); an invalid token
+   falls back to the normal identity card with a hint. */
+async function tokenLogin() {
+  try {
+    const r = await rpc('pulsecheck_token_login', { p_token: INVITE_TOKEN });
+    if (r && r.member_number) {
+      me = { apa: r.member_number, name: r.name || ('Player ' + r.member_number) };
+      localStorage.setItem('pulsecheck.identity', JSON.stringify(me));
+      if (!POLL_SLUG && r.slug) POLL_SLUG = r.slug;
+      return true;
+    }
+  } catch (e) {
+    const stat = document.getElementById('identStatus');
+    stat.textContent = 'That link didn\'t recognize you — enter your APA number or email instead.';
+    stat.className = 'status err';
+  }
+  return false;
+}
 document.getElementById('identBtn').onclick = lookup;
 document.getElementById('identInput').addEventListener('keydown', ev => { if (ev.key === 'Enter') lookup(); });
 document.getElementById('pollSave').onclick = saveVote;
-renderWho();
-if (me) loadPoll();
+(async () => {
+  if (INVITE_TOKEN) await tokenLogin();
+  renderWho();
+  if (me) loadPoll();
+})();
 </script>
 </body>
 </html>
