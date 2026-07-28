@@ -26,7 +26,7 @@
      injects the public anon key → preprod/index.html (--promote for
      root). Edit the SRC, not the output.
      ════════════════════════════════════════════════════════════════════ -->
-<script src="version.js"></script>
+<script>document.write('<scr' + 'ipt src="version.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
 <style>
   :root {
     --spm-primary: #ea002a;
@@ -405,15 +405,28 @@ async function checkVersion() {
   } catch (e) { /* transient — try again next tick */ }
 }
 async function pollForDeploy(remote) {
+  // Reload at most ONCE per remote version per tab. A browser serving a stale
+  // cached bundle keeps window.APP_VERSION on the old value, so an unguarded
+  // reload here re-detects the same mismatch and spins the "Updating…" overlay
+  // in an endless flicker. The per-tab marker breaks that loop; the cache-busted
+  // version.js load (see <head>) makes the single reload land on the new code.
+  const doReload = () => {
+    if (sessionStorage.getItem('pc_reloaded_for') === remote) {
+      document.getElementById('updateOverlay').classList.remove('shown');
+      return;
+    }
+    try { sessionStorage.setItem('pc_reloaded_for', remote); } catch (e) {}
+    location.reload();
+  };
   for (let i = 0; i < 60; i++) {
     try {
       const r = await fetch('version.js?cb=' + Date.now(), { cache: 'no-store' });
       const t = await r.text();
-      if (t.includes("'" + remote + "'")) { location.reload(); return; }
+      if (t.includes("'" + remote + "'")) { doReload(); return; }
     } catch (e) {}
     await new Promise(res => setTimeout(res, 5000));
   }
-  location.reload();
+  doReload();
 }
 setInterval(checkVersion, 5 * 60 * 1000);
 setTimeout(checkVersion, 8000);
