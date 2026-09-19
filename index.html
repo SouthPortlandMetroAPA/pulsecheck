@@ -27,6 +27,7 @@
      root). Edit the SRC, not the output.
      ════════════════════════════════════════════════════════════════════ -->
 <script>document.write('<scr' + 'ipt src="version.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
+<script src="https://southportlandmetroapa.github.io/shared/spm-auth.js"></script>
 <style>
   :root {
     --spm-primary: #ea002a;
@@ -178,6 +179,7 @@
     <input id="identInput" placeholder="APA # or email" autocomplete="off" inputmode="email">
     <button class="btn-primary" id="identBtn">Get started</button>
     <div class="status" id="identStatus"></div>
+    <p class="hint" style="margin-top:8px;font-size:.9rem">Or <a href="#" id="spmSignIn">sign in once</a> and every South Portland Metro app will know you.</p>
   </div>
 
   <div class="card" id="pollCard" style="display:none">
@@ -254,6 +256,7 @@ function renderWho() {
     idCard.style.display = 'none';
     document.getElementById('switchLink').onclick = (ev) => {
       ev.preventDefault();
+      if (me && me.sso) spmAuth.logout();   /* an SSO identity signs out everywhere */
       me = null;
       localStorage.removeItem('pulsecheck.identity');
       document.getElementById('pollCard').style.display = 'none';
@@ -455,8 +458,36 @@ async function tokenLogin() {
 document.getElementById('identBtn').onclick = lookup;
 document.getElementById('identInput').addEventListener('keydown', ev => { if (ev.key === 'Enter') lookup(); });
 document.getElementById('pollSave').onclick = saveVote;
+
+/* ── Shared sign-in (spm-auth.js): a session from ANY SPM app identifies you here; the link below mints one for this app ── */
+async function spmSsoIdentity() {
+  try {
+    const b = await spmAuth.boot({ app: 'pulsecheck' });
+    if (!b.signedIn) { if (b.error) { const s = document.getElementById('identStatus'); s.textContent = b.error; s.className = 'status'; } return false; }
+    const w = await spmAuth.whoami(b.token);
+    if (!(w && w.ok && w.me)) return false;
+    w.me.token = b.token;
+    return w.me;
+  } catch (e) { return false; }
+}
+function spmWireSignIn() {
+  const a = document.getElementById('spmSignIn'); if (!a) return;
+  a.onclick = async (ev) => {
+    ev.preventDefault();
+    const v = (document.getElementById('identInput').value || '').trim();
+    if (!v) { { const s = document.getElementById('identStatus'); s.textContent = 'Enter your APA # or email first, then tap Sign in once.'; s.className = 'status'; } return; }
+    { const s = document.getElementById('identStatus'); s.textContent = 'Sending your sign-in link…'; s.className = 'status'; }
+    const r = await spmAuth.requestLink(v, 'pulsecheck');
+    { const s = document.getElementById('identStatus'); s.textContent = r.ok ? 'Check your email — tap the link and every SPM app will know you.' : (r.error || 'Something went wrong.'); s.className = 'status'; }
+  };
+}
+spmAuth.onChange(function () { location.reload(); });   /* SSO: signed in/out from another app */
+
 (async () => {
   if (INVITE_TOKEN) await tokenLogin();
+  if (me && me.sso && me.sso !== spmAuth.get()) { me = null; localStorage.removeItem('pulsecheck.identity'); }   /* SSO identity is only as alive as the shared token */
+  if (!me) { const w = await spmSsoIdentity(); if (w) { me = { apa: w.member_number, name: w.name, sso: w.token }; localStorage.setItem('pulsecheck.identity', JSON.stringify(me)); } }
+  spmWireSignIn();
   renderWho();
   if (me) loadPoll();
 })();
