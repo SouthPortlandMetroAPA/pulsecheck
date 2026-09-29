@@ -452,7 +452,7 @@ async function fetchDataPulse() {
   } catch (e) { return null; }
 }
 function dataPulseBusy() {
-  if (!_poll) return true;                                   /* nothing rendered yet */
+  if (!_poll) return false;                                  /* nothing rendered: nothing to lose */
   if (_choice !== (_poll.my_choice || null)) return true;    /* chosen but not saved */
   var myX = _poll.my_extras || {};
   var cm = document.getElementById('pollComment');
