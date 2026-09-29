@@ -432,6 +432,47 @@ async function pollForDeploy(remote) {
   doReload();
 }
 setInterval(checkVersion, 5 * 60 * 1000);
+
+/* ── Live data refresh (apa_core.app_pulse) ────────────────────────────────────────────────────────
+   House rule: an open page whose data changes must poll and re-render, with version updates kept
+   separate. The pulse is one opaque hash over what THIS page shows; we re-render only when it moves,
+   never while the tab is hidden, and the first sample only seeds so a fresh load never flashes. */
+var _dataPulse = null;
+async function fetchDataPulse() {
+  var key = 'public';
+  if (!key) return null;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/rpc/app_pulse', {
+      method: 'POST',
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Content-Type': 'application/json',
+                 'Accept-Profile': 'apa_core', 'Content-Profile': 'apa_core' },
+      body: JSON.stringify({ p_app: 'pulsecheck', p_key: String(key) })
+    });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+function dataPulseBusy() {
+  if (!_poll) return false;                                  /* nothing rendered: nothing to lose */
+  if (_choice !== (_poll.my_choice || null)) return true;    /* chosen but not saved */
+  var myX = _poll.my_extras || {};
+  var cm = document.getElementById('pollComment');
+  if (cm && cm.value !== (myX.comment || '')) return true;   /* edited comment */
+  var xt = document.getElementById('pollXtra');
+  if (xt && xt.offsetParent !== null && xt.checked !== !!myX.tuesday) return true;
+  return false;
+}
+async function pollDataPulse() {
+  if (document.hidden) return;
+  if (dataPulseBusy()) return;   /* skip WITHOUT storing, so the refresh lands once they are done */
+  var p = await fetchDataPulse();
+  if (p === null) return;
+  if (_dataPulse === null) { _dataPulse = p; return; }
+  if (p === _dataPulse) return;
+  _dataPulse = p;
+  try { await loadPoll(); } catch (e) {}
+}
+setInterval(pollDataPulse, 30000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) pollDataPulse(); });
 setTimeout(checkVersion, 8000);
 
 /* ── Boot ────────────────────────────────────────────────────────── */
